@@ -135,29 +135,124 @@ class ReflexCaptureAgent(CaptureAgent):
         return {'successor_score': 1.0}
 
 
-class OffensiveReflexAgent(ReflexCaptureAgent):
+# class OffensiveReflexAgent(ReflexCaptureAgent):
+#     """
+#   A reflex agent that seeks food. This is an agent
+#   we give you to get an idea of what an offensive agent might look like,
+#   but it is by no means the best or only way to build an offensive agent.
+#   """
+
+#     def get_features(self, game_state, action):
+#         features = util.Counter()
+#         successor = self.get_successor(game_state, action)
+#         food_list = self.get_food(successor).as_list()
+#         features['successor_score'] = -len(food_list)  # self.get_score(successor)
+
+#         # Compute distance to the nearest food
+
+#         if len(food_list) > 0:  # This should always be True,  but better safe than sorry
+#             my_pos = successor.get_agent_state(self.index).get_position()
+#             min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
+#             features['distance_to_food'] = min_distance
+#         return features
+
+#     def get_weights(self, game_state, action):
+#         return {'successor_score': 100, 'distance_to_food': -1}
+
+
+class OffensiveReflexAgent(ReflexCaptureAgent): #AdaptiveAgent(ReflexCaptureAgent):
     """
-  A reflex agent that seeks food. This is an agent
-  we give you to get an idea of what an offensive agent might look like,
-  but it is by no means the best or only way to build an offensive agent.
-  """
+    Starts as an offensive agent but switches to defense after eating 5 food pellets.
+    """
+
+    def __init__(self, index):
+        super().__init__(index)
+        self.food_eaten = 0  # Track food collected
+        self.on_offense = True  # Starts as an offensive agent
+
+    def choose_action(self, game_state):
+        """
+        Picks among the actions with the highest Q(s,a).
+        """
+        actions = game_state.get_legal_actions(self.index)
+
+        # You can profile your evaluation time by uncommenting these lines
+        # start = time.time()
+        values = [self.evaluate(game_state, a) for a in actions]
+        # print 'eval time for agent %d: %.4f' % (self.index, time.time() - start)
+
+        max_value = max(values)
+        best_actions = [a for a, v in zip(actions, values) if v == max_value]
+
+        food_left = len(self.get_food(game_state).as_list())
+
+        if food_left <= 2:
+            best_dist = 9999
+            best_action = None
+            for action in actions:
+                successor = self.get_successor(game_state, action)
+                pos2 = successor.get_agent_position(self.index)
+                dist = self.get_maze_distance(self.start, pos2)
+                if dist < best_dist:
+                    best_action = action
+                    best_dist = dist
+            return best_action
+
+        return random.choice(best_actions)
+    
 
     def get_features(self, game_state, action):
         features = util.Counter()
         successor = self.get_successor(game_state, action)
-        food_list = self.get_food(successor).as_list()
-        features['successor_score'] = -len(food_list)  # self.get_score(successor)
+        my_state = successor.get_agent_state(self.index)
+        my_pos = my_state.get_position()
 
-        # Compute distance to the nearest food
+        if self.on_offense:
+            # Offense: Seek food
+            food_list = self.get_food(successor).as_list()
+            features['successor_score'] = len(food_list)  # Prefer states where we've eaten food
+            if len(food_list) > 0:
+                min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
+                features['distance_to_food'] = min_distance
+        else:
+            # Defense: Stay near the center, chase invaders
+            enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+            invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
+            features['num_invaders'] = len(invaders)
 
-        if len(food_list) > 0:  # This should always be True,  but better safe than sorry
-            my_pos = successor.get_agent_state(self.index).get_position()
-            min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
-            features['distance_to_food'] = min_distance
+            if len(invaders) > 0:
+                dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
+                features['invader_distance'] = min(dists)
+
+            #center_x = (self.get_food(game_state).width // 2) - 1 if self.red else (self.get_food(game_state).width // 2)
+            #center_y = self.get_food(game_state).height // 2
+            #center_position = (center_x, center_y)
+            #features['proximity_to_center'] = -self.get_maze_distance(my_pos, center_position)
+
         return features
 
     def get_weights(self, game_state, action):
-        return {'successor_score': 100, 'distance_to_food': -1}
+        if self.on_offense:
+            return {'successor_score': -80, 'distance_to_food': -1}
+        else:
+            return {'num_invaders': -1000, 'invader_distance': -10}
+        
+    def get_successor(self, game_state, action):
+        successor = game_state.generate_successor(self.index, action)
+        pos = successor.get_agent_state(self.index).get_position()
+
+        # If we've eaten food, count it
+        if self.on_offense:
+            prev_food = self.get_food(game_state).as_list()
+            new_food = self.get_food(successor).as_list()
+            if len(prev_food) > len(new_food):
+                self.food_eaten += 1
+
+            # Switch to defense after 5 food
+            if self.food_eaten >= 3:
+                self.on_offense = False
+
+        return successor
 
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
