@@ -13,6 +13,3 @@
 * Student 1 u255237 - Lucky Gerona - luckyniwre.gerona01@estudiant.upf.edu
 * Student 2 u254743 - Marc Molla - marc.molla01@estudiant.upf.edu
 
-Replace the lines above with the correct details of members. Delete or add lines as needed.
-
-Student numbers should just be the **numbers**.
